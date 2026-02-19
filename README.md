@@ -3,6 +3,8 @@
 AIチャット付きデスクトップブラウザです。  
 左にチャット、右にブラウザを表示し、AIがツール経由でページを読んだり操作できます。
 
+![天気を質問したときの画面](docs/images/sample.jpg)
+
 ## 現在の仕様（要点）
 - Windows/macOS向け Flutter アプリ
 - プロバイダー: Anthropic系 / OpenAI系（API Key）
