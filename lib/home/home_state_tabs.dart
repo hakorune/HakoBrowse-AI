@@ -83,23 +83,48 @@ extension _HomeStateTabsExt on _HomePageState {
           };
           postMessagePayload(payload);
         }
-        document.addEventListener('pointerdown', function(e) { postDebugEvent('pointerdown', e); }, true);
-        document.addEventListener('pointerup', function(e) { postDebugEvent('pointerup', e); }, true);
-        document.addEventListener('click', function(e) { postDebugEvent('click', e); }, true);
-
-        // Workaround: in some WebView2 composition cases Google account popups
-        // render but menu clicks do not activate. Jump directly to AccountChooser.
-        document.addEventListener('click', function(e) {
-          var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-          if (!anchor || !anchor.href) return;
-          var href = String(anchor.href || '');
-          var lower = href.toLowerCase();
-          if (lower.indexOf('accounts.google.com/signoutoptions') < 0 &&
-              lower.indexOf('accounts.google.com/accountchooser') < 0) {
-            return;
+        function findAnchorFromEvent(e) {
+          if (!e) return null;
+          var target = e.target || null;
+          if (target && target.closest) {
+            var direct = target.closest('a[href]');
+            if (direct && direct.href) return direct;
           }
+          var path = null;
+          try {
+            path = e.composedPath ? e.composedPath() : null;
+          } catch (_) {}
+          if (!path || !path.length) return null;
+          for (var i = 0; i < path.length; i++) {
+            var node = path[i];
+            if (!node) continue;
+            if (node.tagName && String(node.tagName).toLowerCase() === 'a' && node.href) {
+              return node;
+            }
+            if (node.closest) {
+              var nested = node.closest('a[href]');
+              if (nested && nested.href) return nested;
+            }
+          }
+          return null;
+        }
+        function isGoogleAccountEntry(href) {
+          if (!href) return false;
+          var lower = String(href).toLowerCase();
+          if (lower.indexOf('accounts.google.com/signoutoptions') >= 0) return true;
+          if (lower.indexOf('accounts.google.com/accountchooser') >= 0) return true;
+          if (lower.indexOf('accounts.google.com/addsession') >= 0) return true;
+          return false;
+        }
+        function maybeRedirectGoogleAccountChooser(e, source) {
+          if (!e) return false;
+          var anchor = findAnchorFromEvent(e);
+          if (!anchor || !anchor.href) return false;
+          var href = String(anchor.href || '');
+          if (!isGoogleAccountEntry(href)) return false;
           e.preventDefault();
           e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
           var continueUrl = '';
           try {
             continueUrl = encodeURIComponent(String(window.location.href || 'https://www.google.com'));
@@ -107,7 +132,51 @@ extension _HomeStateTabsExt on _HomePageState {
           var chooser = continueUrl
             ? ('https://accounts.google.com/AccountChooser?continue=' + continueUrl)
             : 'https://accounts.google.com/AccountChooser';
-          postMessagePayload({ type: 'open_url_same_tab', url: chooser });
+          postMessagePayload({
+            type: 'open_url_same_tab',
+            url: chooser,
+            source: source || '',
+            href: href
+          });
+          return true;
+        }
+        var lastNewTabAt = 0;
+        var lastNewTabUrl = '';
+        function postOpenInNewTab(url) {
+          if (!url) return;
+          var now = Date.now();
+          if (url === lastNewTabUrl && (now - lastNewTabAt) < 350) return;
+          lastNewTabAt = now;
+          lastNewTabUrl = url;
+          postMessagePayload({ type: 'open_in_new_tab', url: url });
+        }
+        function openLinkInNewTabFromEvent(e) {
+          var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+          if (!anchor || !anchor.href) return false;
+          var href = String(anchor.href || '');
+          if (!href) return false;
+          if (href.indexOf('javascript:') === 0) return false;
+          e.preventDefault();
+          e.stopPropagation();
+          postOpenInNewTab(href);
+          return true;
+        }
+        document.addEventListener('pointerdown', function(e) {
+          if (Number(e.button || 0) === 0 && maybeRedirectGoogleAccountChooser(e, 'pointerdown')) return;
+          postDebugEvent('pointerdown', e);
+        }, true);
+        document.addEventListener('pointerup', function(e) { postDebugEvent('pointerup', e); }, true);
+        document.addEventListener('click', function(e) {
+          if (maybeRedirectGoogleAccountChooser(e, 'click')) return;
+          postDebugEvent('click', e);
+        }, true);
+        document.addEventListener('auxclick', function(e) {
+          if (Number(e.button) !== 1 && Number(e.which) !== 2) return;
+          openLinkInNewTabFromEvent(e);
+        }, true);
+        document.addEventListener('mouseup', function(e) {
+          if (Number(e.button) !== 1 && Number(e.which) !== 2) return;
+          openLinkInNewTabFromEvent(e);
         }, true);
       })();
       ''');
@@ -174,13 +243,20 @@ extension _HomeStateTabsExt on _HomePageState {
         if (type == 'open_url_same_tab') {
           final url = payload['url']?.toString() ?? '';
           if (url.trim().isEmpty) return;
-          _log('Google popup workaround: open same tab -> $url');
+          final source = payload['source']?.toString() ?? '';
+          final href = payload['href']?.toString() ?? '';
+          _log(
+            'Google popup workaround${source.isEmpty ? '' : '[$source]'}: open same tab -> $url${href.isEmpty ? '' : ' (from $href)'}',
+          );
           await controller.loadUrl(url);
           return;
         }
         if (type != 'open_in_new_tab') return;
         final url = payload['url']?.toString() ?? '';
         if (url.trim().isEmpty) return;
+        if (_showDebug) {
+          _log('Open in new tab: $url');
+        }
         await _createTab(initialUrl: url, activate: true);
       });
 

@@ -63,8 +63,10 @@ flutter run -d windows
 ## Function Calling ツール
 - `get_page_content`
 - `navigate_to`
+- `open_new_tab`
 - `get_current_url`
 - `execute_script`
+- `http_request`
 - `extract_structured`
 - `add_bookmark`
 - `list_bookmarks`

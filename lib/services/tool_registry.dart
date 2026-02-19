@@ -48,6 +48,39 @@ class ToolRegistry {
       required: <String>['script'],
     ),
     ToolDefinition(
+      name: 'http_request',
+      description: 'HTTPリクエストを実行してレスポンスを取得します。',
+      risk: 'high',
+      parameters: {
+        'url': {'type': 'string', 'description': 'リクエスト先URL'},
+        'method': {
+          'type': 'string',
+          'description': 'HTTPメソッド（GET/POST/PUT/PATCH/DELETE/HEAD）',
+        },
+        'headers': {
+          'type': 'object',
+          'description': 'HTTPヘッダー（文字列キー/値）',
+          'additionalProperties': {'type': 'string'},
+        },
+        'body': {
+          'description': 'リクエストボディ（文字列またはJSONオブジェクト）',
+        },
+        'timeout_seconds': {
+          'type': 'integer',
+          'description': 'タイムアウト秒（既定: 20, 上限: 60）',
+        },
+        'max_response_bytes': {
+          'type': 'integer',
+          'description': 'レスポンス最大取得バイト数（既定: 200000）',
+        },
+        'follow_redirects': {
+          'type': 'boolean',
+          'description': 'リダイレクト追従（既定: true）',
+        },
+      },
+      required: <String>['url'],
+    ),
+    ToolDefinition(
       name: 'extract_structured',
       description: 'ページから指定schemaに沿って構造化データを抽出します。',
       risk: 'medium',

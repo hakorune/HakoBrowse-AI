@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 class SafetyGate {
@@ -22,6 +24,64 @@ class SafetyGate {
         lower.contains('document.cookie') ||
         lower.contains('localstorage') ||
         lower.contains('sessionstorage');
+  }
+
+  static bool isRiskyHttpRequest({
+    required String method,
+    required String url,
+    required Map<String, String> headers,
+    String? body,
+  }) {
+    final normalizedMethod = method.toUpperCase().trim();
+    final uri = Uri.tryParse(url);
+    if (uri == null) return true;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return true;
+
+    final riskyMethod = normalizedMethod != 'GET' && normalizedMethod != 'HEAD';
+    final sensitiveHeader = headers.keys.any((k) {
+      final lower = k.toLowerCase();
+      return lower == 'authorization' ||
+          lower == 'cookie' ||
+          lower == 'set-cookie' ||
+          lower == 'x-api-key' ||
+          lower == 'proxy-authorization';
+    });
+    final hasBody = (body ?? '').trim().isNotEmpty;
+    final isInsecure = uri.scheme == 'http';
+    final privateHost = _isPrivateHost(uri.host);
+
+    return riskyMethod ||
+        sensitiveHeader ||
+        hasBody ||
+        isInsecure ||
+        privateHost ||
+        isRiskyNavigate(url);
+  }
+
+  static bool _isPrivateHost(String host) {
+    final lower = host.trim().toLowerCase();
+    if (lower.isEmpty) return true;
+    if (lower == 'localhost' || lower.endsWith('.local')) return true;
+
+    final ip = InternetAddress.tryParse(lower);
+    if (ip == null) return false;
+
+    if (ip.type == InternetAddressType.IPv4) {
+      final b = ip.rawAddress;
+      if (b.length != 4) return false;
+      if (b[0] == 10) return true;
+      if (b[0] == 127) return true;
+      if (b[0] == 192 && b[1] == 168) return true;
+      if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+      if (b[0] == 169 && b[1] == 254) return true;
+      return false;
+    }
+
+    if (ip.type == InternetAddressType.IPv6) {
+      return ip.isLoopback || ip.isLinkLocal;
+    }
+
+    return false;
   }
 
   static Future<bool> confirm({

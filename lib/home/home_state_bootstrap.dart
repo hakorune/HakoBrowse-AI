@@ -331,11 +331,22 @@ Steps:
 ''';
   }
 
-  Set<String>? _activeAllowedTools() {
+  Set<String>? _activeAllowedTools({String? userMessage}) {
     final enabled = _skills.where((s) => s.enabled).toList();
     if (enabled.isEmpty) return null;
+
+    var scoped = enabled;
+    final query = userMessage?.trim() ?? '';
+    if (query.isNotEmpty) {
+      final relevant = _pickRelevantSkills(query, enabled);
+      if (relevant.isEmpty) {
+        return null;
+      }
+      scoped = relevant;
+    }
+
     final out = <String>{};
-    for (final s in enabled) {
+    for (final s in scoped) {
       if (s.allowedTools.isEmpty) {
         return null;
       }

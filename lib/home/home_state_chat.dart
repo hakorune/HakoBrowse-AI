@@ -137,7 +137,7 @@ extension _HomeStateChatExt on _HomePageState {
 
     final activeProfiles =
         _agentProfiles.where((p) => _selectedAgentIds.contains(p.id)).toList();
-    final allowedTools = _activeAllowedTools();
+    final allowedTools = _activeAllowedTools(userMessage: userMessage);
     for (final profile in activeProfiles) {
       _contextForAgent(profile.id).addUserText(userMessage);
     }
