@@ -3,24 +3,148 @@
 part of '../main.dart';
 
 extension _HomeStateSessionExt on _HomePageState {
+  Future<void> _toggleDebugMode() async {
+    if (_showDebug) {
+      _log('Debug mode OFF');
+      if (!mounted) return;
+      setState(() {
+        _showDebug = false;
+      });
+      await _debugLogFileService.flush();
+      _markSessionDirty(reason: 'toggle_debug_off', saveSoon: true);
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _showDebug = true;
+    });
+    final path = await _debugLogFileService.getLogFilePath();
+    _log('Debug mode ON (auto file log: $path)');
+    _markSessionDirty(reason: 'toggle_debug_on', saveSoon: true);
+  }
+
   void _log(String message) {
     final timestamp = DateTime.now().toString().substring(11, 23);
-    _debugLogs.add('[$timestamp] $message');
+    final line = '[$timestamp] $message';
+    _debugLogs.add(line);
     const maxLogs = 1200;
     if (_debugLogs.length > maxLogs) {
       _debugLogs.removeRange(0, _debugLogs.length - maxLogs);
     }
     debugPrint('[hakobrowse] $message');
-    if (mounted && _showDebug) {
-      setState(() {});
+    if (_showDebug) {
+      final flushSoon = message.contains('Session save failed') ||
+          message.contains('Session restore failed') ||
+          message.contains('Skill editor dialog failed');
+      _debugLogFileService.appendLine(line, flushSoon: flushSoon);
+    }
+    if (mounted && _showDebug && !_isDebugUiUpdateMuted()) {
+      _requestDebugUiRefresh();
     }
   }
 
-  void _markSessionDirty() {
+  void _markSessionDirty({
+    String reason = 'state_change',
+    bool saveSoon = false,
+  }) {
+    if (_defaultStateMode) return;
     _sessionDirty = true;
+    _pendingSessionSaveReason ??= reason;
+    if (saveSoon) {
+      _queueSessionSave(reason: reason);
+    }
+  }
+
+  void _muteDebugUiUpdates({
+    required Duration duration,
+  }) {
+    final nextUntil = DateTime.now().add(duration);
+    final current = _debugUiMutedUntil;
+    if (current == null || current.isBefore(nextUntil)) {
+      _debugUiMutedUntil = nextUntil;
+    }
+  }
+
+  bool _isDebugUiUpdateMuted() {
+    if (_isSkillEditorOpen) return true;
+    final until = _debugUiMutedUntil;
+    if (until == null) return false;
+    if (!DateTime.now().isBefore(until)) {
+      _debugUiMutedUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  void _requestDebugUiRefresh() {
+    if (!mounted) return;
+    if (_debugLogUiRefreshDebounce?.isActive ?? false) return;
+    _debugLogUiRefreshDebounce = Timer(const Duration(milliseconds: 90), () {
+      if (!mounted || !_showDebug || _isDebugUiUpdateMuted()) return;
+      setState(() {});
+    });
+  }
+
+  bool _isSessionSavePaused() {
+    final until = _sessionSavePausedUntil;
+    if (until == null) return false;
+    if (!DateTime.now().isBefore(until)) {
+      _sessionSavePausedUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  Duration _sessionSavePauseRemaining() {
+    final until = _sessionSavePausedUntil;
+    if (until == null) return Duration.zero;
+    final diff = until.difference(DateTime.now());
+    if (diff.isNegative || diff == Duration.zero) return Duration.zero;
+    return diff;
+  }
+
+  void _pauseSessionSave({
+    required Duration duration,
+    required String reason,
+  }) {
+    final nextUntil = DateTime.now().add(duration);
+    final current = _sessionSavePausedUntil;
+    if (current == null || current.isBefore(nextUntil)) {
+      _sessionSavePausedUntil = nextUntil;
+    }
+    _log('Session save paused (${duration.inSeconds}s): $reason');
+  }
+
+  void _queueSessionSave({
+    String reason = 'event',
+    Duration delay = const Duration(milliseconds: 900),
+  }) {
+    if (_defaultStateMode) return;
+    var effectiveDelay = delay;
+    if (_isSessionSavePaused()) {
+      final remaining = _sessionSavePauseRemaining();
+      final delayed = remaining + const Duration(milliseconds: 350);
+      if (delayed > effectiveDelay) effectiveDelay = delayed;
+    }
     _sessionSaveDebounce?.cancel();
-    _sessionSaveDebounce = Timer(const Duration(milliseconds: 800), () {
-      _saveSessionNow();
+    _sessionSaveDebounce = Timer(effectiveDelay, () {
+      unawaited(_saveSessionNow(reason: reason));
+    });
+  }
+
+  void _startSessionAutosaveTimer() {
+    _sessionPeriodicSaveTimer?.cancel();
+    if (_defaultStateMode) return;
+    _sessionPeriodicSaveTimer =
+        Timer.periodic(const Duration(seconds: 60), (_) {
+      if (!_sessionDirty) return;
+      if (_isSessionSavePaused()) return;
+      if (_isSkillEditorOpen) {
+        _log('Session save deferred: skill editor is open');
+        return;
+      }
+      unawaited(_saveSessionNow(reason: 'periodic'));
     });
   }
 
@@ -87,14 +211,49 @@ extension _HomeStateSessionExt on _HomePageState {
     );
   }
 
-  Future<void> _saveSessionNow({bool force = false}) async {
+  Future<void> _saveSessionNow({
+    bool force = false,
+    String reason = 'event',
+  }) async {
+    if (_defaultStateMode) return;
     if (!force && !_sessionDirty) return;
+    if (!force && _isSessionSavePaused()) {
+      _queueSessionSave(
+        reason: 'deferred_while_session_save_paused',
+        delay: _sessionSavePauseRemaining() + const Duration(milliseconds: 350),
+      );
+      return;
+    }
+    if (!force && _isSkillEditorOpen) {
+      _queueSessionSave(
+        reason: 'deferred_while_skill_editor_open',
+        delay: const Duration(seconds: 2),
+      );
+      return;
+    }
+    if (_sessionSaveInFlight) return;
+    _sessionSaveInFlight = true;
     try {
-      await _sessionStorageService.save(_buildSessionSnapshot());
+      final saveReason = force ? reason : (_pendingSessionSaveReason ?? reason);
+      final stopwatch = Stopwatch()..start();
+      final buildStart = stopwatch.elapsedMilliseconds;
+      final snapshot = _buildSessionSnapshot();
+      final buildMs = stopwatch.elapsedMilliseconds - buildStart;
+      if (buildMs >= 250) {
+        _log('Session snapshot build took ${buildMs}ms');
+      }
+      await _sessionStorageService.save(snapshot);
+      final totalMs = stopwatch.elapsedMilliseconds;
+      if (totalMs >= 500) {
+        _log('Session save took ${totalMs}ms (reason: $saveReason)');
+      }
       _sessionDirty = false;
-      _log('Session saved');
+      _pendingSessionSaveReason = null;
+      _log('Session saved (reason: $saveReason)');
     } catch (e) {
       _log('Session save failed: $e');
+    } finally {
+      _sessionSaveInFlight = false;
     }
   }
 
@@ -158,6 +317,7 @@ extension _HomeStateSessionExt on _HomePageState {
         await controller.loadUrl(_currentUrl);
       }
       _sessionDirty = false;
+      _pendingSessionSaveReason = null;
       _log('Session restored');
     } catch (e) {
       _log('Session restore failed: $e');
@@ -196,7 +356,7 @@ extension _HomeStateSessionExt on _HomePageState {
         _toolTraces.removeRange(300, _toolTraces.length);
       }
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'tool_trace_start', saveSoon: true);
     return entry;
   }
 
@@ -220,7 +380,7 @@ extension _HomeStateSessionExt on _HomePageState {
     setState(() {
       _toolTraces[index] = updated;
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'tool_trace_finish', saveSoon: true);
   }
 
   ContextManager _contextForAgent(String agentId) {
@@ -259,7 +419,10 @@ extension _HomeStateSessionExt on _HomePageState {
     });
     _sessionSaveDebounce?.cancel();
     _sessionDirty = false;
-    await _sessionStorageService.clear();
+    _pendingSessionSaveReason = null;
+    if (!_defaultStateMode) {
+      await _sessionStorageService.clear();
+    }
     _log('Conversation cleared');
   }
 }

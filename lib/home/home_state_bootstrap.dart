@@ -5,15 +5,32 @@ part of '../main.dart';
 extension _HomeStateBootstrapExt on _HomePageState {
   Future<void> _initializeApp() async {
     _syncAllAgentContexts();
+    if (_defaultStateMode) {
+      _log(
+        'Launch mode: --default-state (ignoring persisted state; using preview defaults)',
+      );
+    }
     await _loadConfig();
+    await _loadToolAuthProfiles();
     await _loadAgentProfiles();
     await _loadSkills();
     await _loadBookmarks();
     await _initTabs();
-    await _restoreSession();
+    if (_defaultStateMode) {
+      _log('Session restore skipped by --default-state');
+    } else {
+      await _restoreSession();
+    }
   }
 
   Future<void> _loadConfig() async {
+    if (_defaultStateMode) {
+      _applySettings(_settings);
+      _log(
+        'Loaded default config: provider=${_settingsService.providerId(_settings.provider)}, auth=${_settingsService.authMethodId(_settings.authMethod)}, api_key=unset',
+      );
+      return;
+    }
     final loaded = await _settingsService.load();
     _log(
       'Loaded config: provider=${_settingsService.providerId(loaded.provider)}, auth=${_settingsService.authMethodId(loaded.authMethod)}, api_key=${loaded.apiKey.trim().isEmpty ? "unset" : "set"}',
@@ -22,6 +39,24 @@ extension _HomeStateBootstrapExt on _HomePageState {
   }
 
   Future<void> _loadAgentProfiles() async {
+    if (_defaultStateMode) {
+      const profile = AgentProfile(
+        id: 'default',
+        name: 'default',
+        directoryPath: '(default-state)',
+        soul: '',
+        userProfile: '',
+      );
+      if (!mounted) return;
+      setState(() {
+        _agentProfiles = const <AgentProfile>[profile];
+        _selectedAgentIds = const <String>{'default'};
+      });
+      _contextForAgent(profile.id);
+      _syncAllAgentContexts();
+      _log('Loaded agent profiles: default (default-state mode)');
+      return;
+    }
     final profiles = await _agentProfileService.loadProfiles();
     if (!mounted) return;
     final profileIds = profiles.map((p) => p.id).toSet();
@@ -38,13 +73,30 @@ extension _HomeStateBootstrapExt on _HomePageState {
     }
     _syncAllAgentContexts();
     _log('Loaded agent profiles: ${profiles.map((p) => p.name).join(', ')}');
-    _markSessionDirty();
+    _markSessionDirty(reason: 'load_agent_profiles');
   }
 
   Future<void> _loadSkills() async {
+    if (_defaultStateMode) {
+      final skills = <SkillDefinition>[
+        _skillService.buildDefaultSkillDefinition(
+          enabled: true,
+          path: '(default-state)',
+        ),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _skills = skills;
+      });
+      _log('Loaded skills: ${skills.length} (default-state mode)');
+      return;
+    }
     try {
       final skills = await _skillService
-          .loadSkills()
+          .loadSkills(
+            usePersistedEnabledIds: true,
+            seedDefaultSkillIfNeeded: true,
+          )
           .timeout(const Duration(seconds: 6), onTimeout: () => _skills);
       if (!mounted) return;
       setState(() {
@@ -60,6 +112,31 @@ extension _HomeStateBootstrapExt on _HomePageState {
     }
   }
 
+  Future<void> _loadToolAuthProfiles() async {
+    if (_defaultStateMode) {
+      if (!mounted) return;
+      setState(() {
+        _toolAuthProfiles = <ToolAuthProfile>[];
+      });
+      _log('Loaded tool auth profiles: 0 (default-state mode)');
+      return;
+    }
+    try {
+      final profiles = await _toolAuthProfileService.loadProfiles();
+      if (!mounted) return;
+      setState(() {
+        _toolAuthProfiles = profiles;
+      });
+      _log('Loaded tool auth profiles: ${profiles.length}');
+    } catch (e) {
+      _log('Load tool auth profiles failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _toolAuthProfiles = <ToolAuthProfile>[];
+      });
+    }
+  }
+
   Future<void> _toggleSkill(String skillId, bool enabled) async {
     final next = _skills
         .map((s) => s.id == skillId ? s.copyWith(enabled: enabled) : s)
@@ -68,10 +145,11 @@ extension _HomeStateBootstrapExt on _HomePageState {
       _skills = next;
     });
     unawaited(_persistEnabledSkills(next));
-    _markSessionDirty();
+    _markSessionDirty(reason: 'toggle_skill', saveSoon: true);
   }
 
   Future<void> _persistEnabledSkills(List<SkillDefinition> skills) async {
+    if (_defaultStateMode) return;
     try {
       final enabledIds =
           skills.where((s) => s.enabled).map((s) => s.id).toSet();
@@ -82,6 +160,11 @@ extension _HomeStateBootstrapExt on _HomePageState {
   }
 
   Future<void> _showCreateSkillDialog() async {
+    if (_defaultStateMode) {
+      _log('Skill create skipped: default-state mode');
+      return;
+    }
+    if (_isSkillEditorOpen) return;
     final draft = await _showSkillEditorDialog();
     if (draft == null) return;
     await _skillService.saveSkill(
@@ -99,10 +182,15 @@ extension _HomeStateBootstrapExt on _HomePageState {
       );
       _enforceChatMessageLimit();
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'create_skill', saveSoon: true);
   }
 
   Future<void> _showEditSkillDialog(SkillDefinition skill) async {
+    if (_defaultStateMode) {
+      _log('Skill edit skipped: default-state mode');
+      return;
+    }
+    if (_isSkillEditorOpen) return;
     final draft = await _showSkillEditorDialog(initial: skill);
     if (draft == null) return;
     await _skillService.saveSkill(
@@ -115,10 +203,14 @@ extension _HomeStateBootstrapExt on _HomePageState {
     );
     await _loadSkills();
     _log('Skill updated: ${skill.id}');
-    _markSessionDirty();
+    _markSessionDirty(reason: 'edit_skill', saveSoon: true);
   }
 
   Future<void> _deleteSkillWithConfirm(SkillDefinition skill) async {
+    if (_defaultStateMode) {
+      _log('Skill delete skipped: default-state mode');
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -140,180 +232,78 @@ extension _HomeStateBootstrapExt on _HomePageState {
     await _skillService.deleteSkill(skill.id);
     await _loadSkills();
     _log('Skill deleted: ${skill.id}');
-    _markSessionDirty();
+    _markSessionDirty(reason: 'delete_skill', saveSoon: true);
+  }
+
+  Future<void> _showToolAuthProfilesManager() async {
+    if (_defaultStateMode) {
+      _log('Tool auth profile edit skipped: default-state mode');
+      return;
+    }
+    final updated = await showToolAuthProfilesDialog(
+      context: context,
+      service: _toolAuthProfileService,
+      initial: _toolAuthProfiles,
+    );
+    if (updated == null) return;
+    await _toolAuthProfileService.saveProfiles(updated);
+    await _loadToolAuthProfiles();
+    _markSessionDirty(reason: 'manage_tool_auth_profiles', saveSoon: true);
   }
 
   Future<_SkillEditorDraft?> _showSkillEditorDialog({
     SkillDefinition? initial,
   }) async {
-    final nameController = TextEditingController(text: initial?.name ?? '');
-    final descriptionController =
-        TextEditingController(text: initial?.description ?? '');
-    final bodyController = TextEditingController(
-      text: initial?.body ?? _defaultSkillBodyTemplate(),
+    if (!mounted || _isSkillEditorOpen) return null;
+    _isSkillEditorOpen = true;
+    _debugLogUiRefreshDebounce?.cancel();
+    _muteDebugUiUpdates(duration: const Duration(seconds: 2));
+    _pauseSessionSave(
+      duration: const Duration(seconds: 12),
+      reason: 'skill_editor_open',
     );
-    var enabled = initial?.enabled ?? true;
-    var allowAllTools = initial == null ? true : initial.allowedTools.isEmpty;
-    final selectedTools = {...initial?.allowedTools ?? const <String>[]};
+    final initialBodyLength = initial?.body.length ?? 0;
+    if (initialBodyLength > 20000) {
+      _log('Opening large skill body in editor: $initialBodyLength chars');
+    }
+
     final toolNames = ToolRegistry.definitions.map((d) => d.name).toList()
       ..sort();
-    String? validationError;
-
-    final result = await showDialog<_SkillEditorDraft>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setLocalState) => AlertDialog(
-          title: Text(initial == null ? 'New Skill' : 'Edit Skill'),
-          content: SizedBox(
-            width: 660,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (initial != null) ...[
-                    Text(
-                      'Skill ID: ${initial.id}',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Name',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: descriptionController,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Description',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: enabled,
-                    title: const Text('Enabled'),
-                    onChanged: (v) => setLocalState(() => enabled = v),
-                  ),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: allowAllTools,
-                    title: const Text('Allow all tools'),
-                    subtitle: const Text('OFF の場合だけ個別にチェック'),
-                    onChanged: (v) => setLocalState(() => allowAllTools = v),
-                  ),
-                  if (!allowAllTools)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: toolNames
-                            .map(
-                              (tool) => FilterChip(
-                                label: Text(tool),
-                                selected: selectedTools.contains(tool),
-                                onSelected: (selected) {
-                                  setLocalState(() {
-                                    if (selected) {
-                                      selectedTools.add(tool);
-                                    } else {
-                                      selectedTools.remove(tool);
-                                    }
-                                  });
-                                },
-                              ),
-                            )
-                            .toList(growable: false),
-                      ),
-                    ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: bodyController,
-                    maxLines: 14,
-                    decoration: const InputDecoration(
-                      labelText: 'SKILL body',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (validationError != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      validationError!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+    try {
+      final result = await Navigator.of(context).push<_SkillEditorDraft>(
+        MaterialPageRoute<_SkillEditorDraft>(
+          fullscreenDialog: true,
+          builder: (routeContext) => _SkillEditorScreen(
+            initial: initial,
+            toolNames: toolNames,
+            defaultBodyTemplate: _defaultSkillBodyTemplate(),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final name = nameController.text.trim();
-                final desc = descriptionController.text.trim();
-                final body = bodyController.text.trim();
-                if (name.isEmpty) {
-                  setLocalState(() {
-                    validationError = 'Name is required.';
-                  });
-                  return;
-                }
-                if (!allowAllTools && selectedTools.isEmpty) {
-                  setLocalState(() {
-                    validationError =
-                        'Select at least one tool or enable "Allow all tools".';
-                  });
-                  return;
-                }
-                Navigator.pop(
-                  context,
-                  _SkillEditorDraft(
-                    name: name,
-                    description: desc,
-                    body: body,
-                    enabled: enabled,
-                    allowAllTools: allowAllTools,
-                    allowedTools: selectedTools.toList()..sort(),
-                  ),
-                );
-              },
-              child: const Text('Save'),
-            ),
-          ],
         ),
-      ),
-    );
-
-    nameController.dispose();
-    descriptionController.dispose();
-    bodyController.dispose();
-    return result;
+      );
+      if (result == null) {
+        _log('Skill editor: cancel');
+      } else {
+        _log('Skill editor: save');
+      }
+      return result;
+    } catch (e) {
+      _log('Skill editor dialog failed: $e');
+      return null;
+    } finally {
+      _isSkillEditorOpen = false;
+      _debugLogUiRefreshDebounce?.cancel();
+      _muteDebugUiUpdates(duration: const Duration(seconds: 1));
+      _pauseSessionSave(
+        duration: const Duration(seconds: 4),
+        reason: 'skill_editor_close',
+      );
+      if (_sessionDirty) {
+        _queueSessionSave(
+          reason: 'skill_editor_close',
+          delay: const Duration(seconds: 5),
+        );
+      }
+    }
   }
 
   String _defaultSkillBodyTemplate() {
@@ -352,6 +342,9 @@ Steps:
       }
       out.addAll(s.allowedTools);
     }
+    out.add('load_skill_index');
+    out.add('load_skill');
+    out.add('load_skill_file');
     return out.isEmpty ? null : out;
   }
 
@@ -363,28 +356,30 @@ Steps:
     final enabled = _skills.where((s) => s.enabled).toList();
     if (enabled.isEmpty) return basePrompt;
 
-    final summaryLines = enabled.map((skill) {
+    const maxSkillSummaries = 24;
+    final summaryList = enabled.take(maxSkillSummaries).map((skill) {
+      final name = _clipPromptText(skill.name.trim(), max: 64);
       final tools =
           skill.allowedTools.isEmpty ? 'ALL' : skill.allowedTools.join(', ');
       final desc = skill.description.trim().isEmpty
           ? '(no description)'
-          : skill.description.trim();
-      return '- ${skill.name}: $desc | allowedTools: $tools';
-    }).join('\n');
+          : _clipPromptText(skill.description.trim(), max: 140);
+      return '- id=${skill.id}, name=$name, desc=$desc, allowedTools=$tools';
+    }).toList(growable: true);
+    if (enabled.length > maxSkillSummaries) {
+      summaryList.add(
+        '- ... ${enabled.length - maxSkillSummaries} more enabled skill(s) omitted from prompt metadata',
+      );
+    }
+    final summaryLines = summaryList.join('\n');
 
     final relevant = _pickRelevantSkills(userMessage, enabled);
-    final detailBlocks = relevant
-        .map((skill) {
-          final body = skill.body.trim();
-          if (body.isEmpty) return '';
-          const maxChars = 2200;
-          final clipped = body.length <= maxChars
-              ? body
-              : '${body.substring(0, maxChars)}\n...';
-          return 'Skill: ${skill.name}\n$clipped';
-        })
-        .where((v) => v.isNotEmpty)
-        .join('\n\n');
+    final relevantLines = relevant
+        .map(
+          (skill) =>
+              '- ${skill.name} (id=${skill.id}, allowedTools=${skill.allowedTools.isEmpty ? "ALL" : skill.allowedTools.join(", ")})',
+        )
+        .join('\n');
 
     final sections = <String>[
       basePrompt,
@@ -392,17 +387,29 @@ Steps:
 SKILLS (enabled)
 $summaryLines
 
+Skill bodies are NOT preloaded into this prompt.
+When you need details, first call `load_skill_index` to inspect headings.
+Then call `load_skill` with `skill_id` and `section`/`query`, or `start_line`/`end_line`, for only needed parts.
+If needed, call `load_skill_file` to read additional files in the same skill folder (ex: HEARTBEAT.md / RULES.md).
+Use `section`/`query` or line ranges to load only the needed part.
+For authenticated API calls via `http_request`, specify `auth_profile` explicitly on each request.
 Use skills only when relevant to the current user request.
-Respect allowedTools for each skill.
+Respect allowedTools for each skill and do not use disallowed tools.
 ''',
     ];
-    if (detailBlocks.isNotEmpty) {
+    if (relevantLines.isNotEmpty) {
       sections.add('''
-SKILL DETAILS (relevant only)
-$detailBlocks
+RELEVANT SKILL HINTS (for this user request)
+$relevantLines
 ''');
     }
     return sections.where((s) => s.trim().isNotEmpty).join('\n\n');
+  }
+
+  String _clipPromptText(String value, {required int max}) {
+    final normalized = value.replaceAll('\n', ' ').replaceAll('\r', ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return '${normalized.substring(0, max)}...';
   }
 
   List<SkillDefinition> _pickRelevantSkills(
@@ -448,10 +455,14 @@ $detailBlocks
     setState(() {
       _selectedAgentIds = {agentId};
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'select_agent', saveSoon: true);
   }
 
   Future<void> _showEditAgentDialog() async {
+    if (_defaultStateMode) {
+      _log('Agent profile edit skipped: default-state mode');
+      return;
+    }
     final profile = _activeAgentProfile;
     if (profile == null) return;
     final nameController = TextEditingController(text: profile.name);
@@ -551,10 +562,18 @@ $detailBlocks
       );
       _enforceChatMessageLimit();
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'apply_settings', saveSoon: true);
   }
 
   Future<void> _loadBookmarks() async {
+    if (_defaultStateMode) {
+      if (!mounted) return;
+      setState(() {
+        _bookmarks = <BookmarkNode>[];
+      });
+      _log('Loaded bookmarks: 0 links (default-state mode)');
+      return;
+    }
     final bookmarks = await _bookmarkService.loadBookmarks();
     if (!mounted) return;
     setState(() {
@@ -590,7 +609,7 @@ $detailBlocks
     if (_leftTabIndex == 0) {
       _ensureChatBottomAfterViewSwitch();
     }
-    _markSessionDirty();
+    _markSessionDirty(reason: 'edit_agent', saveSoon: true);
   }
 
   Future<void> _showSettingsDialog() async {
@@ -598,14 +617,23 @@ $detailBlocks
       context,
       initial: _settings,
       settingsService: _settingsService,
+      toolAuthProfileService: _toolAuthProfileService,
       log: _log,
+      persistToolAuthProfiles: !_defaultStateMode,
     );
     if (next == null) return;
 
-    await _settingsService.save(next);
-    _log(
-      'Saved config: provider=${_settingsService.providerId(next.provider)}, auth=${_settingsService.authMethodId(next.authMethod)}, chat_max_messages=${next.chatMaxMessages}',
-    );
+    if (_defaultStateMode) {
+      _log(
+        'Applied config (runtime only, not persisted): provider=${_settingsService.providerId(next.provider)}, auth=${_settingsService.authMethodId(next.authMethod)}, chat_max_messages=${next.chatMaxMessages}',
+      );
+    } else {
+      await _loadToolAuthProfiles();
+      await _settingsService.save(next);
+      _log(
+        'Saved config: provider=${_settingsService.providerId(next.provider)}, auth=${_settingsService.authMethodId(next.authMethod)}, chat_max_messages=${next.chatMaxMessages}',
+      );
+    }
     _applySettings(next);
   }
 }
@@ -626,4 +654,251 @@ class _SkillEditorDraft {
     required this.allowAllTools,
     required this.allowedTools,
   });
+}
+
+class _SkillEditorScreen extends StatefulWidget {
+  final SkillDefinition? initial;
+  final List<String> toolNames;
+  final String defaultBodyTemplate;
+
+  const _SkillEditorScreen({
+    required this.initial,
+    required this.toolNames,
+    required this.defaultBodyTemplate,
+  });
+
+  @override
+  State<_SkillEditorScreen> createState() => _SkillEditorScreenState();
+}
+
+class _SkillEditorScreenState extends State<_SkillEditorScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _bodyController;
+  late bool _enabled;
+  late bool _allowAllTools;
+  late final Set<String> _selectedTools;
+  String? _validationError;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initial?.name ?? '');
+    _descriptionController =
+        TextEditingController(text: widget.initial?.description ?? '');
+    _bodyController = TextEditingController(
+      text: widget.initial?.body ?? widget.defaultBodyTemplate,
+    );
+    _enabled = widget.initial?.enabled ?? true;
+    _allowAllTools =
+        widget.initial == null ? true : widget.initial!.allowedTools.isEmpty;
+    _selectedTools = {...widget.initial?.allowedTools ?? const <String>[]};
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  void _clearValidation() {
+    if (_validationError == null) return;
+    setState(() {
+      _validationError = null;
+    });
+  }
+
+  void _cancel() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    final description = _descriptionController.text.trim();
+    final body = _bodyController.text.trim();
+    if (name.isEmpty) {
+      setState(() {
+        _validationError = 'Name is required.';
+      });
+      return;
+    }
+    if (!_allowAllTools && _selectedTools.isEmpty) {
+      setState(() {
+        _validationError =
+            'Select at least one tool or enable "Allow all tools".';
+      });
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(
+      _SkillEditorDraft(
+        name: name,
+        description: description,
+        body: body,
+        enabled: _enabled,
+        allowAllTools: _allowAllTools,
+        allowedTools: _selectedTools.toList()..sort(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.initial == null ? 'New Skill' : 'Edit Skill';
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(
+          onPressed: _cancel,
+          icon: const Icon(Icons.close),
+          tooltip: 'Cancel',
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton(
+              onPressed: _save,
+              child: const Text('Save'),
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.initial != null) ...[
+                Text(
+                  'Skill ID: ${widget.initial!.id}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              TextField(
+                controller: _nameController,
+                autocorrect: false,
+                enableSuggestions: false,
+                spellCheckConfiguration:
+                    const SpellCheckConfiguration.disabled(),
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                onChanged: (_) => _clearValidation(),
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _descriptionController,
+                maxLines: 2,
+                autocorrect: false,
+                enableSuggestions: false,
+                spellCheckConfiguration:
+                    const SpellCheckConfiguration.disabled(),
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                onChanged: (_) => _clearValidation(),
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _enabled,
+                title: const Text('Enabled'),
+                onChanged: (v) => setState(() => _enabled = v),
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _allowAllTools,
+                title: const Text('Allow all tools'),
+                subtitle: const Text('OFF の場合だけ個別にチェック'),
+                onChanged: (v) => setState(() => _allowAllTools = v),
+              ),
+              if (!_allowAllTools)
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: widget.toolNames
+                          .map(
+                            (tool) => FilterChip(
+                              label: Text(tool),
+                              selected: _selectedTools.contains(tool),
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    _selectedTools.add(tool);
+                                  } else {
+                                    _selectedTools.remove(tool);
+                                  }
+                                });
+                              },
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: TextField(
+                  controller: _bodyController,
+                  maxLines: null,
+                  expands: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  spellCheckConfiguration:
+                      const SpellCheckConfiguration.disabled(),
+                  smartDashesType: SmartDashesType.disabled,
+                  smartQuotesType: SmartQuotesType.disabled,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  onChanged: (_) => _clearValidation(),
+                  decoration: const InputDecoration(
+                    labelText: 'SKILL body',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              if (_validationError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _validationError!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -201,7 +201,7 @@ extension _HomeStateTabsExt on _HomePageState {
         });
         if (index == _activeTabIndex) {
           _syncAllAgentContexts();
-          _markSessionDirty();
+          _markSessionDirty(reason: 'active_tab_url_change');
         }
       });
 
@@ -275,7 +275,7 @@ extension _HomeStateTabsExt on _HomePageState {
       if (activate) {
         _syncAllAgentContexts();
       }
-      _markSessionDirty();
+      _markSessionDirty(reason: 'create_tab', saveSoon: true);
       return _tabs.length - 1;
     } catch (e) {
       _log('Create tab failed: $e');
@@ -306,7 +306,7 @@ extension _HomeStateTabsExt on _HomePageState {
       _isWebViewReady = _tabs.isNotEmpty;
     });
     _syncAllAgentContexts();
-    _markSessionDirty();
+    _markSessionDirty(reason: 'close_tab', saveSoon: true);
   }
 
   Future<void> _showTabMenu(int tabIndex) async {
@@ -355,6 +355,16 @@ extension _HomeStateTabsExt on _HomePageState {
     _layoutSaveDebounce?.cancel();
     _layoutSaveDebounce = Timer(const Duration(milliseconds: 300), () async {
       final updated = _settings.copyWith(leftPanelWidth: _leftPanelWidth);
+      if (_defaultStateMode) {
+        if (!mounted) return;
+        setState(() {
+          _settings = updated;
+        });
+        _log(
+          'Left panel width changed (runtime only): ${_leftPanelWidth.toStringAsFixed(0)}',
+        );
+        return;
+      }
       await _settingsService.save(updated);
       if (!mounted) return;
       setState(() {
@@ -447,7 +457,7 @@ extension _HomeStateTabsExt on _HomePageState {
       }
     }
     if (persist) {
-      _markSessionDirty();
+      _markSessionDirty(reason: 'popup_policy_change', saveSoon: true);
     }
   }
 }

@@ -9,11 +9,53 @@ class SkillService {
   static const String _enabledSkillsKey = 'enabled_skill_ids_v1';
   static const String _seededDefaultSkillKey = 'seeded_default_skill_v1';
   static const String _defaultSkillId = 'weather-check';
+  static const String _defaultSkillName = 'Weather Check';
+  static const String _defaultSkillDescription = 'Googleで指定地域の天気を確認する';
+  static const List<String> _defaultAllowedTools = <String>[
+    'navigate_to',
+    'get_page_content',
+    'extract_structured',
+  ];
+  static const String _defaultSkillBody = '''
+Goal:
+- 指定した地域の天気を確認する。
 
-  Future<List<SkillDefinition>> loadSkills() async {
-    final enabled = await _loadEnabledSkillIds();
+When to use:
+- ユーザーが「天気」「気温」「予報」を知りたい時。
+
+Steps:
+1. `navigate_to` で `https://www.google.com/search?q=<地域>+天気` に移動する。
+2. `extract_structured` で現在気温・概要・最高/最低を抽出する。
+3. 抽出が難しい場合は `get_page_content` でページ内容を取得して要点を返す。
+''';
+
+  SkillDefinition buildDefaultSkillDefinition({
+    bool enabled = true,
+    String? path,
+  }) {
+    return SkillDefinition(
+      id: _defaultSkillId,
+      name: _defaultSkillName,
+      description: _defaultSkillDescription,
+      allowedTools: _defaultAllowedTools,
+      body: _defaultSkillBody.trim(),
+      path: path ?? 'private/skills/$_defaultSkillId/SKILL.md',
+      enabled: enabled,
+    );
+  }
+
+  Future<List<SkillDefinition>> loadSkills({
+    bool usePersistedEnabledIds = true,
+    bool seedDefaultSkillIfNeeded = true,
+  }) async {
+    final enabled =
+        usePersistedEnabledIds ? await _loadEnabledSkillIds() : <String>{};
     final skillsRoot = Directory('private/skills');
-    await _seedDefaultSkillIfNeeded(skillsRoot, enabled);
+    if (seedDefaultSkillIfNeeded) {
+      await _seedDefaultSkillIfNeeded(skillsRoot, enabled);
+    } else if (!await skillsRoot.exists()) {
+      await skillsRoot.create(recursive: true);
+    }
 
     final out = <SkillDefinition>[];
     final dirs = await skillsRoot
@@ -54,25 +96,10 @@ class SkillService {
     final skillDir = Directory('${skillsRoot.path}/$_defaultSkillId');
     await skillDir.create(recursive: true);
     final content = _buildSkillMarkdown(
-      name: 'Weather Check',
-      description: 'Googleで指定地域の天気を確認する',
-      allowedTools: const <String>[
-        'navigate_to',
-        'get_page_content',
-        'extract_structured',
-      ],
-      body: '''
-Goal:
-- 指定した地域の天気を確認する。
-
-When to use:
-- ユーザーが「天気」「気温」「予報」を知りたい時。
-
-Steps:
-1. `navigate_to` で `https://www.google.com/search?q=<地域>+天気` に移動する。
-2. `extract_structured` で現在気温・概要・最高/最低を抽出する。
-3. 抽出が難しい場合は `get_page_content` でページ内容を取得して要点を返す。
-''',
+      name: _defaultSkillName,
+      description: _defaultSkillDescription,
+      allowedTools: _defaultAllowedTools,
+      body: _defaultSkillBody.trim(),
     );
     await File('${skillDir.path}/SKILL.md').writeAsString(content);
     enabledIds.add(_defaultSkillId);
