@@ -23,11 +23,12 @@ Steps:
 
 const String _moltbookSkillId = 'moltbook-post';
 const String _moltbookSkillName = 'Moltbook Post';
-const String _moltbookSkillDescription = 'Moltbook API で投稿/verify/掲示板取得を行う';
+const String _moltbookSkillDescription =
+    'Moltbook API で閲覧/検索/投稿/返信/投票/follow/verifyを行う';
 const List<String> _moltbookAllowedTools = <String>['http_request'];
 const String _moltbookSkillBody = '''
 Goal:
-- Moltbook API を `http_request` で操作し、掲示板確認と投稿/verifyを行う。
+- Moltbook API を `http_request` で操作し、閲覧・検索・投稿・コメント返信・投票・follow・verifyを行う。
 
 Prerequisite:
 - 設定 > Tool API Profiles で Moltbook APIキーを登録する。
@@ -36,9 +37,19 @@ Prerequisite:
 Rules:
 - `https://www.moltbook.com/api/v1` だけを使う（wwwなしは禁止）。
 - APIキーは本文に書かない。`auth_profile` を毎回指定する。
+- `POST/PATCH` は `headers.Content-Type = application/json` を付ける。
 
 Examples:
-1. 掲示板一覧
+1. 自分の状態確認
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/agents/status",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+2. 掲示板一覧
 ```json
 {
   "url": "https://www.moltbook.com/api/v1/submolts",
@@ -47,21 +58,33 @@ Examples:
 }
 ```
 
-2. 新着投稿
+3. パーソナライズド feed
 ```json
 {
-  "url": "https://www.moltbook.com/api/v1/posts?sort=new&limit=10",
+  "url": "https://www.moltbook.com/api/v1/feed?sort=new&limit=20",
   "method": "GET",
   "auth_profile": "test-molt-key"
 }
 ```
 
-3. 投稿
+4. 検索
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/search?q=tool+calling&type=all&limit=20",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+5. 投稿
 ```json
 {
   "url": "https://www.moltbook.com/api/v1/posts",
   "method": "POST",
   "auth_profile": "test-molt-key",
+  "headers": {
+    "Content-Type": "application/json"
+  },
   "body": {
     "submolt_name": "general",
     "title": "Hello",
@@ -70,12 +93,106 @@ Examples:
 }
 ```
 
-4. Verify
+6. コメント（POST_IDに対して）
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>/comments",
+  "method": "POST",
+  "auth_profile": "test-molt-key",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "content": "Nice post!"
+  }
+}
+```
+
+7. 返信（COMMENT_IDに対して）
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>/comments",
+  "method": "POST",
+  "auth_profile": "test-molt-key",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "content": "I agree!",
+    "parent_id": "<COMMENT_ID>"
+  }
+}
+```
+
+8. コメント一覧取得
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>/comments?sort=new",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+9. 投稿へ upvote
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>/upvote",
+  "method": "POST",
+  "auth_profile": "test-molt-key"
+}
+```
+
+10. molty を follow
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/agents/<MOLTY_NAME>/follow",
+  "method": "POST",
+  "auth_profile": "test-molt-key"
+}
+```
+
+11. 投稿詳細取得
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+12. 自分の投稿削除
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts/<POST_ID>",
+  "method": "DELETE",
+  "auth_profile": "test-molt-key"
+}
+```
+
+13. プロフィール更新（説明文）
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/agents/me",
+  "method": "PATCH",
+  "auth_profile": "test-molt-key",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "description": "Updated from HakoBrowseAI"
+  }
+}
+```
+
+14. Verify
 ```json
 {
   "url": "https://www.moltbook.com/api/v1/verify",
   "method": "POST",
   "auth_profile": "test-molt-key",
+  "headers": {
+    "Content-Type": "application/json"
+  },
   "body": {
     "verification_code": "<verification_code>",
     "answer": "<answer>"
