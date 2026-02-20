@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionStorageService {
@@ -7,7 +8,8 @@ class SessionStorageService {
 
   Future<void> save(Map<String, dynamic> snapshot) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionKey, jsonEncode(snapshot));
+    final encoded = await compute(_encodeSessionSnapshot, snapshot);
+    await prefs.setString(_sessionKey, encoded);
   }
 
   Future<Map<String, dynamic>?> load() async {
@@ -29,4 +31,8 @@ class SessionStorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
   }
+}
+
+String _encodeSessionSnapshot(Map<String, dynamic> snapshot) {
+  return jsonEncode(snapshot);
 }

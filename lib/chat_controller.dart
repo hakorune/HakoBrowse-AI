@@ -32,6 +32,7 @@ class ChatController {
 
     String fullResponse = '';
     final contentBlocks = <Map<String, dynamic>>[];
+    UsageEvent? latestUsage;
 
     try {
       if (cancelToken?.isCancelled == true) {
@@ -44,7 +45,7 @@ class ChatController {
         log('Context estimated tokens: ${context.estimatedTokens}');
       }
       if (context.compactRecommended) {
-        final compacted = contextManager.compactNow();
+        final compacted = contextManager.compactNow(force: true);
         if (compacted) {
           log('Context compacted automatically');
           context = contextManager.buildMessages(systemPrompt: systemPrompt);
@@ -119,6 +120,16 @@ class ChatController {
             'tool_use_id': toolUseId,
             'content': safeResult,
           });
+        } else if (event is UsageEvent) {
+          latestUsage = event;
+          final input = event.inputTokens;
+          final output = event.outputTokens;
+          final total = event.totalTokens;
+          final cacheRead = event.cacheReadTokens;
+          final cacheWrite = event.cacheWriteTokens;
+          log(
+            'Token usage(actual): input=${input ?? "-"}, output=${output ?? "-"}, total=${total ?? "-"}, cache_read=${cacheRead ?? "-"}, cache_write=${cacheWrite ?? "-"}',
+          );
         }
       }
 
@@ -152,6 +163,15 @@ class ChatController {
           manageRespondingFlag: false,
         );
         return;
+      }
+
+      if (latestUsage != null &&
+          latestUsage.inputTokens != null &&
+          latestUsage.inputTokens! > 0) {
+        final ratio = context.estimatedTokens / latestUsage.inputTokens!;
+        log(
+          'Token estimate ratio: estimated=${context.estimatedTokens}, actual_input=${latestUsage.inputTokens}, ratio=${ratio.toStringAsFixed(2)}x',
+        );
       }
 
       log('Response complete: ${fullResponse.length} chars');

@@ -45,17 +45,35 @@ class AiServiceConfig {
   }
 }
 
-abstract class AiEvent {}
+abstract class AiEvent {
+  const AiEvent();
+}
 
 class TextEvent extends AiEvent {
   final String text;
-  TextEvent(this.text);
+  const TextEvent(this.text);
 }
 
 class ToolUseEvent extends AiEvent {
   final String toolName;
   final Map<String, dynamic> arguments;
-  ToolUseEvent(this.toolName, this.arguments);
+  const ToolUseEvent(this.toolName, this.arguments);
+}
+
+class UsageEvent extends AiEvent {
+  final int? inputTokens;
+  final int? outputTokens;
+  final int? totalTokens;
+  final int? cacheReadTokens;
+  final int? cacheWriteTokens;
+
+  const UsageEvent({
+    this.inputTokens,
+    this.outputTokens,
+    this.totalTokens,
+    this.cacheReadTokens,
+    this.cacheWriteTokens,
+  });
 }
 
 class AiRequestCancelledException implements Exception {

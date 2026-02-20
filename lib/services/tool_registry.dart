@@ -32,6 +32,78 @@ class ToolRegistry {
       required: <String>[],
     ),
     ToolDefinition(
+      name: 'load_skill',
+      description:
+          'ローカル保存済みスキルを必要なときだけ読み込みます。section/queryや行番号(start_line/end_line)で部分取得できます。',
+      risk: 'low',
+      parameters: {
+        'skill_id': {'type': 'string', 'description': '読み込むスキルID'},
+        'skill_name': {'type': 'string', 'description': '読み込むスキル名'},
+        'query': {
+          'type': 'string',
+          'description': '本文内で関連部分を探すキーワード',
+        },
+        'section': {
+          'type': 'string',
+          'description': 'Markdown見出し名（例: Steps / API）',
+        },
+        'start_line': {
+          'type': 'integer',
+          'description': '取得開始行(1始まり)。end_line未指定なら末尾まで',
+        },
+        'end_line': {
+          'type': 'integer',
+          'description': '取得終了行(1始まり、含む)。start_line以上',
+        },
+        'max_chars': {
+          'type': 'integer',
+          'description': '返却本文の最大文字数（既定: 3500, 範囲: 800-8000）',
+        },
+      },
+      required: <String>[],
+    ),
+    ToolDefinition(
+      name: 'load_skill_file',
+      description: 'スキルフォルダ内の追加ファイル（例: HEARTBEAT.md / RULES.md）を相対パスで読み込みます。',
+      risk: 'low',
+      parameters: {
+        'skill_id': {'type': 'string', 'description': '対象スキルID'},
+        'skill_name': {'type': 'string', 'description': '対象スキル名'},
+        'query': {'type': 'string', 'description': '対象スキルを絞る検索語'},
+        'file_path': {
+          'type': 'string',
+          'description': 'スキルフォルダ基準の相対パス（例: HEARTBEAT.md）',
+        },
+        'section': {
+          'type': 'string',
+          'description': 'Markdown見出し名（例: Rules / API）',
+        },
+        'max_chars': {
+          'type': 'integer',
+          'description': '返却本文の最大文字数（既定: 3500, 範囲: 800-12000）',
+        },
+      },
+      required: <String>[],
+    ),
+    ToolDefinition(
+      name: 'load_skill_index',
+      description: 'スキルの見出し一覧とメタ情報を取得します。本文は含みません。',
+      risk: 'low',
+      parameters: {
+        'skill_id': {'type': 'string', 'description': '対象スキルID'},
+        'skill_name': {'type': 'string', 'description': '対象スキル名'},
+        'query': {
+          'type': 'string',
+          'description': '検索キーワード（該当スキル候補の絞り込み）',
+        },
+        'max_headings': {
+          'type': 'integer',
+          'description': '返却する見出し数上限（既定: 60, 範囲: 10-200）',
+        },
+      },
+      required: <String>[],
+    ),
+    ToolDefinition(
       name: 'get_current_url',
       description: '現在ブラウザで開いているページのURLを取得します。',
       risk: 'low',
@@ -61,6 +133,10 @@ class ToolRegistry {
           'type': 'object',
           'description': 'HTTPヘッダー（文字列キー/値）',
           'additionalProperties': {'type': 'string'},
+        },
+        'auth_profile': {
+          'type': 'string',
+          'description': '登録済みAPIプロファイルIDまたは名前（Authorization等を自動注入）',
         },
         'body': {
           'description': 'リクエストボディ（文字列またはJSONオブジェクト）',

@@ -11,7 +11,7 @@ extension _HomeStateWidgetsExt on _HomePageState {
       isAiResponding: _isAiResponding,
       onToggleSafety: () {
         setState(() => _enableSafetyGate = !_enableSafetyGate);
-        _markSessionDirty();
+        _markSessionDirty(reason: 'toggle_safety', saveSoon: true);
       },
       onClearChatView: _clearChatViewOnly,
       onReloadAgents: _loadAgentProfiles,
@@ -27,7 +27,7 @@ extension _HomeStateWidgetsExt on _HomePageState {
           _useHtmlContent = !_useHtmlContent;
           _syncAllAgentContexts();
         });
-        _markSessionDirty();
+        _markSessionDirty(reason: 'toggle_content_mode', saveSoon: true);
       },
       inputController: _inputController,
       scrollController: _chatScrollController,
@@ -69,7 +69,7 @@ extension _HomeStateWidgetsExt on _HomePageState {
                   if (tab.value == 0) {
                     _ensureChatBottomAfterViewSwitch();
                   }
-                  _markSessionDirty();
+                  _markSessionDirty(reason: 'left_tab_change');
                 },
               );
             },
@@ -120,12 +120,14 @@ extension _HomeStateWidgetsExt on _HomePageState {
   Widget _buildSkillsPanel() {
     return SkillsPanel(
       skills: _skills,
+      availableAuthProfileIds: _toolAuthProfiles.map((p) => p.id).toSet(),
       onToggle: (id, enabled) {
         _toggleSkill(id, enabled);
       },
       onCreateSkill: _showCreateSkillDialog,
       onEditSkill: _showEditSkillDialog,
       onDeleteSkill: _deleteSkillWithConfirm,
+      onManageAuthProfiles: _showToolAuthProfilesManager,
       onReloadSkills: _loadSkills,
     );
   }

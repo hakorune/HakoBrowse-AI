@@ -22,7 +22,7 @@ extension _HomeStateChatExt on _HomePageState {
     setState(() {
       _messages.clear();
     });
-    _markSessionDirty();
+    _markSessionDirty(reason: 'clear_chat_view', saveSoon: true);
     _log('Chat view cleared (context preserved)');
   }
 
@@ -50,6 +50,8 @@ extension _HomeStateChatExt on _HomePageState {
         currentUrl: _currentUrl,
         enableSafetyGate: _enableSafetyGate,
         bookmarks: _bookmarks,
+        skills: _skills,
+        authProfiles: _toolAuthProfiles,
         bookmarkService: _bookmarkService,
         onBookmarksChanged: (updated) async {
           if (!mounted) return;
@@ -133,7 +135,7 @@ extension _HomeStateChatExt on _HomePageState {
     final cancelToken = AiCancelToken();
     _activeCancelToken = cancelToken;
     _scrollChatToBottom(animated: false);
-    _markSessionDirty();
+    _markSessionDirty(reason: 'user_message', saveSoon: true);
 
     final activeProfiles =
         _agentProfiles.where((p) => _selectedAgentIds.contains(p.id)).toList();
@@ -173,7 +175,7 @@ extension _HomeStateChatExt on _HomePageState {
           _isAiResponding = false;
         });
         _scrollChatToBottom();
-        _markSessionDirty();
+        _markSessionDirty(reason: 'ai_response', saveSoon: true);
       }
     }
   }
@@ -190,31 +192,34 @@ extension _HomeStateChatExt on _HomePageState {
         _enforceChatMessageLimit();
       });
       _scrollChatToBottom();
-      _markSessionDirty();
+      _markSessionDirty(reason: 'slash_clear', saveSoon: true);
       _log('Command: /clear');
       return true;
     }
 
     if (command == '/compress') {
       var compactedCount = 0;
-      var maxTokens = 0;
+      var maxTokensBefore = 0;
+      var maxTokensAfter = 0;
       for (final entry in _agentContexts.entries) {
-        final compacted = entry.value.compactNow();
+        final before = entry.value.buildMessages();
+        maxTokensBefore = math.max(maxTokensBefore, before.estimatedTokens);
+        final compacted = entry.value.compactNow(force: true);
         if (compacted) compactedCount++;
-        final context = entry.value.buildMessages();
-        maxTokens = math.max(maxTokens, context.estimatedTokens);
+        final after = entry.value.buildMessages();
+        maxTokensAfter = math.max(maxTokensAfter, after.estimatedTokens);
       }
       final text = compactedCount > 0
-          ? 'Context compressed for $compactedCount agent(s). Max estimated tokens: $maxTokens'
+          ? 'Context compressed for $compactedCount agent(s). Tokens: $maxTokensBefore -> $maxTokensAfter'
           : 'Not enough history to compress yet.';
       setState(() {
         _messages.add(ChatMessage(text: text, isUser: false));
         _enforceChatMessageLimit();
       });
       _scrollChatToBottom();
-      _markSessionDirty();
+      _markSessionDirty(reason: 'slash_compress', saveSoon: true);
       _log(
-        'Command: /compress -> compacted_agents=$compactedCount, max_tokens=$maxTokens',
+        'Command: /compress -> compacted_agents=$compactedCount, max_tokens_before=$maxTokensBefore, max_tokens_after=$maxTokensAfter',
       );
       return true;
     }
@@ -233,7 +238,7 @@ extension _HomeStateChatExt on _HomePageState {
         _enforceChatMessageLimit();
       });
       _scrollChatToBottom();
-      _markSessionDirty();
+      _markSessionDirty(reason: 'slash_reload_agent', saveSoon: true);
       _log('Command: /reload_agent');
       return true;
     }
@@ -251,7 +256,7 @@ extension _HomeStateChatExt on _HomePageState {
         _enforceChatMessageLimit();
       });
       _scrollChatToBottom();
-      _markSessionDirty();
+      _markSessionDirty(reason: 'slash_reload_skill', saveSoon: true);
       _log('Command: /reload_skill');
       return true;
     }
@@ -267,7 +272,7 @@ extension _HomeStateChatExt on _HomePageState {
       _enforceChatMessageLimit();
     });
     _scrollChatToBottom();
-    _markSessionDirty();
+    _markSessionDirty(reason: 'slash_unknown', saveSoon: true);
     _log('Unknown command: $input');
     return true;
   }

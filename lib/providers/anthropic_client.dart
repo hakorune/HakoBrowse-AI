@@ -82,6 +82,11 @@ class AnthropicClient {
 
       String currentToolName = '';
       String currentToolArgs = '';
+      int? usageInputTokens;
+      int? usageOutputTokens;
+      int? usageCacheReadTokens;
+      int? usageCacheWriteTokens;
+      var usageEmitted = false;
 
       await for (final chunk in response.stream.transform(utf8.decoder)) {
         if (cancelToken?.isCancelled == true) {
@@ -95,6 +100,37 @@ class AnthropicClient {
           try {
             final json = jsonDecode(data);
             final type = json['type'];
+
+            if (type == 'message_start') {
+              final usage = json['message']?['usage'];
+              _mergeAnthropicUsage(
+                usage,
+                inputTokens: (v) => usageInputTokens = v,
+                outputTokens: (v) => usageOutputTokens = v,
+                cacheReadTokens: (v) => usageCacheReadTokens = v,
+                cacheWriteTokens: (v) => usageCacheWriteTokens = v,
+              );
+            } else if (type == 'message_delta') {
+              final usage = json['usage'];
+              _mergeAnthropicUsage(
+                usage,
+                inputTokens: (v) => usageInputTokens = v,
+                outputTokens: (v) => usageOutputTokens = v,
+                cacheReadTokens: (v) => usageCacheReadTokens = v,
+                cacheWriteTokens: (v) => usageCacheWriteTokens = v,
+              );
+            } else if (type == 'message_stop') {
+              final usageEvent = _buildUsageEvent(
+                inputTokens: usageInputTokens,
+                outputTokens: usageOutputTokens,
+                cacheReadTokens: usageCacheReadTokens,
+                cacheWriteTokens: usageCacheWriteTokens,
+              );
+              if (usageEvent != null) {
+                usageEmitted = true;
+                yield usageEvent;
+              }
+            }
 
             if (type == 'content_block_delta') {
               final delta = json['delta'];
@@ -128,6 +164,18 @@ class AnthropicClient {
           }
         }
       }
+
+      if (!usageEmitted) {
+        final usageEvent = _buildUsageEvent(
+          inputTokens: usageInputTokens,
+          outputTokens: usageOutputTokens,
+          cacheReadTokens: usageCacheReadTokens,
+          cacheWriteTokens: usageCacheWriteTokens,
+        );
+        if (usageEvent != null) {
+          yield usageEvent;
+        }
+      }
     } on AiRequestCancelledException {
       return;
     } catch (e) {
@@ -147,4 +195,59 @@ void _debugPrint(String message) {
     debugPrint('[AnthropicClient] $message');
     return true;
   }());
+}
+
+void _mergeAnthropicUsage(
+  dynamic usage, {
+  required void Function(int value) inputTokens,
+  required void Function(int value) outputTokens,
+  required void Function(int value) cacheReadTokens,
+  required void Function(int value) cacheWriteTokens,
+}) {
+  if (usage is! Map) return;
+  final input = _asInt(usage['input_tokens']);
+  final output = _asInt(usage['output_tokens']);
+  final cacheRead = _asInt(usage['cache_read_input_tokens']);
+  final cacheWrite = _asInt(usage['cache_creation_input_tokens']);
+  if (input != null) inputTokens(input);
+  if (output != null) outputTokens(output);
+  if (cacheRead != null) cacheReadTokens(cacheRead);
+  if (cacheWrite != null) cacheWriteTokens(cacheWrite);
+}
+
+UsageEvent? _buildUsageEvent({
+  int? inputTokens,
+  int? outputTokens,
+  int? cacheReadTokens,
+  int? cacheWriteTokens,
+}) {
+  final parts = <int>[
+    if (inputTokens != null) inputTokens,
+    if (outputTokens != null) outputTokens,
+    if (cacheReadTokens != null) cacheReadTokens,
+    if (cacheWriteTokens != null) cacheWriteTokens,
+  ];
+  final total =
+      parts.isEmpty ? null : parts.fold<int>(0, (sum, value) => sum + value);
+  if (inputTokens == null &&
+      outputTokens == null &&
+      cacheReadTokens == null &&
+      cacheWriteTokens == null &&
+      total == null) {
+    return null;
+  }
+  return UsageEvent(
+    inputTokens: inputTokens,
+    outputTokens: outputTokens,
+    totalTokens: total,
+    cacheReadTokens: cacheReadTokens,
+    cacheWriteTokens: cacheWriteTokens,
+  );
+}
+
+int? _asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
 }
