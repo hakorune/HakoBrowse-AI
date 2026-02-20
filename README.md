@@ -5,6 +5,24 @@ AIチャット付きデスクトップブラウザです。
 
 ![天気を質問したときの画面](docs/images/sample.jpg)
 
+## ダウンロード（Windows）
+ソースを触らずに使う場合は、GitHub Releases から `windows-x64.zip` を使ってください。
+
+1. `https://github.com/hakorune/HakoBrowse-AI/releases/latest` を開く
+2. `HakoBrowseAI-<version>-windows-x64.zip` をダウンロード
+3. 任意フォルダへ展開
+4. `aibrowser.exe` を起動
+
+補足:
+- 初回起動でWindowsの保護ダイアログが出た場合は、詳細表示から実行してください。
+- WebView2 Runtime が未導入の場合、ブラウザ表示に失敗することがあります。
+
+## クイックスタート（3分）
+1. 右上 `Settings` で API Key を設定して保存
+2. チャットで `このページを要約して` などを送信
+3. 必要に応じて `Skills` タブでスキルをON/OFF
+4. 外部API利用時は `Settings > Tool API Profiles` でキーを登録
+
 ## 現在の仕様（要点）
 - Windows/macOS向け Flutter アプリ
 - プロバイダー: Anthropic系 / OpenAI系（API Key）
@@ -37,6 +55,16 @@ flutter pub get
 flutter run -d windows
 ```
 
+macOS 実行:
+```bash
+flutter run -d macos
+```
+
+配布ビルド:
+```bash
+flutter build windows
+```
+
 ## デフォルト状態プレビュー（デバッグ）
 保存済みの設定/セッションを読まず、初期状態に近い画面で起動できます。
 
@@ -61,6 +89,15 @@ flutter run -d windows --dart-entrypoint-args=--default-state
 - `/clear`: 会話履歴とコンテキストをクリア
 - `/reload_agent`: `SOUL.md` / `USER.md` を再読み込み
 - `/reload_skill`: `private/skills` を再読み込み（外部編集後に必須）
+
+## リリース添付ファイル検証（任意）
+ダウンロードしたZIPの改ざん確認を行う場合:
+
+```powershell
+certutil -hashfile .\HakoBrowseAI-v0.2.0-windows-x64.zip SHA256
+```
+
+結果がリリース添付の `.sha256` と一致することを確認してください。
 
 ## エージェント設定ファイル
 以下のいずれかで運用できます。
@@ -126,6 +163,12 @@ private/skills/<skill_id>/
 - 保存タイミング: 主要イベント時（送信/応答完了/設定変更/タブ操作）+ 60秒ごとのdirty保存 + 非アクティブ化時
 - `/clear`: メモリ上の会話だけでなく永続セッションも削除
 - 「チャット表示だけクリア」ボタン: 画面上の会話を消すのみ（エージェントコンテキストは保持）
+
+## トラブルシューティング
+- `API is not configured yet` と表示される場合は、右上の鍵アイコンまたは `Settings` から API Key を登録してください。
+- スキルを編集したのに反映されない場合は、`/reload_skill` を実行してください。
+- `Missing auth profile` 警告が出る場合は、`Settings > Tool API Profiles` で該当IDのプロファイルを作成してください。
+- Googleアカウント切替UIが押しづらい場合は、AppBarの popup policy を `sameWindow` / `allow` で切替して確認してください。
 
 ## 参照ドキュメント
 - 開発履歴: `DEVELOPMENT.md`
