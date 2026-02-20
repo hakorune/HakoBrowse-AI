@@ -6,6 +6,9 @@ import 'package:webview_windows/webview_windows.dart';
 
 import '../models/browser_tab_state.dart';
 
+part 'browser_panel_tab_strip.dart';
+part 'browser_panel_toolbar.dart';
+
 class BrowserPanel extends StatefulWidget {
   final List<BrowserTabState> tabs;
   final int activeTabIndex;
@@ -191,200 +194,29 @@ class _BrowserPanelState extends State<BrowserPanel> {
 
     return Column(
       children: [
-        Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                tooltip: 'Scroll tabs left',
-                onPressed: _canScrollLeft ? () => _scrollTabsBy(-260) : null,
-              ),
-              Expanded(
-                child: Listener(
-                  onPointerSignal: _onTabStripPointerSignal,
-                  child: Container(
-                    key: _tabViewportKey,
-                    child: ListView.builder(
-                      controller: _tabScrollController,
-                      scrollDirection: Axis.horizontal,
-                      itemCount: widget.tabs.length,
-                      itemBuilder: (context, index) {
-                        final tab = widget.tabs[index];
-                        final isActive = index == widget.activeTabIndex;
-                        return GestureDetector(
-                          onSecondaryTap: () => widget.onShowTabMenu(index),
-                          child: InkWell(
-                            onTap: () {
-                              if (isActive) {
-                                widget.onShowTabMenu(index);
-                                return;
-                              }
-                              widget.onSwitchTab(index);
-                            },
-                            child: Container(
-                              width: _tabWidth,
-                              margin: const EdgeInsets.only(right: _tabGap),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? Theme.of(context).colorScheme.surface
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: isActive
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .outlineVariant,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      tab.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: isActive
-                                            ? FontWeight.w600
-                                            : FontWeight.w400,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  InkWell(
-                                    onTap: () => widget.onShowTabMenu(index),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(2),
-                                      child: Icon(Icons.more_vert, size: 14),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                tooltip: 'Scroll tabs right',
-                onPressed: _canScrollRight ? () => _scrollTabsBy(260) : null,
-              ),
-              PopupMenuButton<int>(
-                tooltip: 'All tabs',
-                icon: const Icon(Icons.arrow_drop_down_circle_outlined),
-                onSelected: widget.onSwitchTab,
-                itemBuilder: (context) {
-                  return List<PopupMenuEntry<int>>.generate(
-                    widget.tabs.length,
-                    (index) {
-                      final tab = widget.tabs[index];
-                      final isActive = index == widget.activeTabIndex;
-                      return PopupMenuItem<int>(
-                        value: index,
-                        child: Row(
-                          children: [
-                            Icon(
-                              isActive
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_unchecked,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                tab.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.add),
-                tooltip: 'New tab',
-                onPressed: widget.onNewTab,
-              ),
-            ],
-          ),
+        _BrowserTabStrip(
+          tabs: widget.tabs,
+          activeTabIndex: widget.activeTabIndex,
+          canScrollLeft: _canScrollLeft,
+          canScrollRight: _canScrollRight,
+          tabScrollController: _tabScrollController,
+          tabViewportKey: _tabViewportKey,
+          onScrollTabsBy: _scrollTabsBy,
+          onTabStripPointerSignal: _onTabStripPointerSignal,
+          onShowTabMenu: widget.onShowTabMenu,
+          onSwitchTab: widget.onSwitchTab,
+          onNewTab: widget.onNewTab,
         ),
-        Container(
-          padding: const EdgeInsets.all(6),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, size: 20),
-                onPressed: active == null ? null : widget.onGoBack,
-                visualDensity: VisualDensity.compact,
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward, size: 20),
-                onPressed: active == null ? null : widget.onGoForward,
-                visualDensity: VisualDensity.compact,
-              ),
-              IconButton(
-                icon: const Icon(Icons.refresh, size: 20),
-                onPressed: active == null ? null : widget.onReload,
-                visualDensity: VisualDensity.compact,
-              ),
-              IconButton(
-                icon: const Icon(Icons.manage_accounts_outlined, size: 20),
-                tooltip: 'Google account chooser',
-                onPressed: widget.onOpenGoogleAccountChooser,
-                visualDensity: VisualDensity.compact,
-              ),
-              IconButton(
-                icon: Icon(
-                  widget.currentBookmarked ? Icons.star : Icons.star_border,
-                  size: 20,
-                ),
-                tooltip: 'Toggle bookmark',
-                onPressed: widget.onToggleBookmark,
-                visualDensity: VisualDensity.compact,
-              ),
-              Expanded(
-                child: TextField(
-                  controller: widget.urlController,
-                  decoration: InputDecoration(
-                    hintText: 'URL',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    isDense: true,
-                  ),
-                  onSubmitted: (_) => widget.onLoadUrl(),
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton.filled(
-                icon: const Icon(Icons.arrow_forward, size: 20),
-                onPressed: widget.onLoadUrl,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
+        _BrowserToolbar(
+          hasActiveController: active != null,
+          currentBookmarked: widget.currentBookmarked,
+          urlController: widget.urlController,
+          onGoBack: widget.onGoBack,
+          onGoForward: widget.onGoForward,
+          onReload: widget.onReload,
+          onOpenGoogleAccountChooser: widget.onOpenGoogleAccountChooser,
+          onToggleBookmark: widget.onToggleBookmark,
+          onLoadUrl: widget.onLoadUrl,
         ),
         Expanded(
           child: widget.isWebViewReady && active != null

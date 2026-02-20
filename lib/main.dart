@@ -36,9 +36,14 @@ import 'widgets/tools_panel.dart';
 part 'home/home_state_bookmarks.dart';
 part 'home/home_state_bootstrap.dart';
 part 'home/home_state_chat.dart';
+part 'home/home_state_skill_editor.dart';
 part 'home/home_state_skills.dart';
 part 'home/home_state_session.dart';
+part 'home/home_state_session_debug.dart';
+part 'home/home_state_session_storage.dart';
 part 'home/home_state_tabs.dart';
+part 'home/home_state_tabs_script.dart';
+part 'home/home_state_tabs_webview.dart';
 part 'home/home_state_widgets.dart';
 
 void main(List<String> args) {
