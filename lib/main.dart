@@ -34,6 +34,7 @@ import 'widgets/tool_trace_panel.dart';
 import 'widgets/tools_panel.dart';
 
 part 'home/home_state_bookmarks.dart';
+part 'home/home_state_bookmarks_io.dart';
 part 'home/home_state_bootstrap.dart';
 part 'home/home_state_chat.dart';
 part 'home/home_state_skill_editor.dart';

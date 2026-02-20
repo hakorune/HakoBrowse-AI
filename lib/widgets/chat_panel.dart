@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../agent_profile_service.dart';
 import '../chat_message.dart';
+import 'chat_panel_agents_header.dart';
+import 'chat_panel_input_bar.dart';
 import 'debug_log_panel.dart';
 import 'full_width_space_formatter.dart';
 
@@ -129,88 +131,16 @@ class ChatPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            border: Border(
-              bottom: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text('Agents',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: enableSafetyGate
-                          ? Colors.green.shade100
-                          : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      enableSafetyGate ? 'Safety ON' : 'Safety OFF',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: enableSafetyGate
-                            ? Colors.green.shade900
-                            : Colors.grey.shade800,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: enableSafetyGate
-                        ? 'Disable safety gate'
-                        : 'Enable safety gate',
-                    onPressed: isAiResponding ? null : onToggleSafety,
-                    icon: Icon(
-                      enableSafetyGate ? Icons.shield : Icons.shield_outlined,
-                      size: 18,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Clear chat view (keep context)',
-                    onPressed: isAiResponding ? null : onClearChatView,
-                    icon:
-                        const Icon(Icons.cleaning_services_outlined, size: 18),
-                  ),
-                  IconButton(
-                    tooltip: 'Reload agents',
-                    onPressed: isAiResponding ? null : onReloadAgents,
-                    icon: const Icon(Icons.refresh, size: 18),
-                  ),
-                  IconButton(
-                    tooltip: 'Edit active agent',
-                    onPressed: isAiResponding ? null : onEditActiveAgent,
-                    icon: const Icon(Icons.edit, size: 18),
-                  ),
-                ],
-              ),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: agentProfiles.map((profile) {
-                  final selected = selectedAgentIds.contains(profile.id);
-                  return FilterChip(
-                    label: Text(profile.name),
-                    selected: selected,
-                    onSelected: isAiResponding
-                        ? null
-                        : (_) => onSelectAgent(profile.id),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
+        ChatPanelAgentsHeader(
+          agentProfiles: agentProfiles,
+          selectedAgentIds: selectedAgentIds,
+          enableSafetyGate: enableSafetyGate,
+          isAiResponding: isAiResponding,
+          onToggleSafety: onToggleSafety,
+          onClearChatView: onClearChatView,
+          onReloadAgents: onReloadAgents,
+          onEditActiveAgent: onEditActiveAgent,
+          onSelectAgent: onSelectAgent,
         ),
         Expanded(
           child: messages.isEmpty
@@ -240,139 +170,20 @@ class ChatPanel extends StatelessWidget {
                 ),
         ),
         if (showDebug) DebugLogPanel(logs: debugLogs),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            border: Border(
-              top: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant),
-            ),
-          ),
-          child: ValueListenableBuilder<TextEditingValue>(
-            valueListenable: inputController,
-            builder: (context, inputValue, _) {
-              final slashHints = _matchingSlashCommands(inputValue);
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (slashHints.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: slashHints
-                              .map(
-                                (command) => ActionChip(
-                                  avatar: const Icon(Icons.bolt, size: 14),
-                                  label: Text(
-                                      '$command  ${_commandHint(command)}'),
-                                  onPressed: isAiResponding
-                                      ? null
-                                      : () => _applySlashCommandHint(command),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      ),
-                    ),
-                  Row(
-                    children: [
-                      Tooltip(
-                        message: useHtmlContent
-                            ? 'Using HTML mode'
-                            : 'Using text mode',
-                        child: InkWell(
-                          onTap: onToggleContentMode,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: useHtmlContent
-                                  ? Colors.orange.shade100
-                                  : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  useHtmlContent
-                                      ? Icons.code
-                                      : Icons.text_fields,
-                                  size: 16,
-                                  color: useHtmlContent
-                                      ? Colors.orange.shade800
-                                      : Colors.grey.shade700,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  useHtmlContent ? 'HTML' : 'Text',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: useHtmlContent
-                                        ? Colors.orange.shade800
-                                        : Colors.grey.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Focus(
-                          onKeyEvent: (_, event) => _handleInputKey(event),
-                          child: TextField(
-                            controller: inputController,
-                            inputFormatters: <TextInputFormatter>[
-                              FullWidthSpaceFormatter(),
-                            ],
-                            decoration: InputDecoration(
-                              hintText:
-                                  'Type a message... (Enter send, Shift+Enter newline)',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerLowest,
-                            ),
-                            keyboardType: TextInputType.multiline,
-                            textInputAction: TextInputAction.newline,
-                            minLines: 1,
-                            maxLines: 4,
-                            enabled: !isAiResponding,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      IconButton.filled(
-                        tooltip: isAiResponding ? 'Cancel response' : 'Send',
-                        icon: isAiResponding
-                            ? const Icon(Icons.stop)
-                            : const Icon(Icons.send),
-                        onPressed:
-                            isAiResponding ? onCancelResponse : onSendMessage,
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
+        ChatPanelInputBar(
+          useHtmlContent: useHtmlContent,
+          isAiResponding: isAiResponding,
+          onToggleContentMode: onToggleContentMode,
+          inputController: inputController,
+          inputFormatters: <TextInputFormatter>[
+            FullWidthSpaceFormatter(),
+          ],
+          onHandleInputKey: _handleInputKey,
+          slashHintsBuilder: _matchingSlashCommands,
+          commandHintBuilder: _commandHint,
+          onApplySlashHint: _applySlashCommandHint,
+          onSendMessage: onSendMessage,
+          onCancelResponse: onCancelResponse,
         ),
       ],
     );
