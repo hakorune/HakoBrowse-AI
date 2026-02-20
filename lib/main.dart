@@ -120,6 +120,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool get _defaultStateMode => widget.launchOptions.defaultStateMode;
+  bool get _isApiReady => _config != null;
 
   final TextEditingController _inputController = TextEditingController();
   final TextEditingController _urlController = TextEditingController();
@@ -256,47 +257,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
-    if (_config == null) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.key,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              const Text('Please set an API key'),
-              if (_defaultStateMode) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'Default-state preview mode (--default-state)',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _showSettingsDialog,
-                icon: const Icon(Icons.settings),
-                label: const Text('API Settings'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final modelLabel = _config?.model ?? 'API not set';
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           _defaultStateMode
-              ? 'HakoBrowseAI [${_config!.model}] [DEFAULT]'
-              : 'HakoBrowseAI [${_config!.model}]',
+              ? 'HakoBrowseAI [$modelLabel] [DEFAULT]'
+              : 'HakoBrowseAI [$modelLabel]',
         ),
         actions: [
+          if (!_isApiReady)
+            IconButton(
+              icon: const Icon(Icons.key_off_outlined),
+              tooltip: 'API is not configured yet',
+              onPressed: _showSettingsDialog,
+            ),
           PopupMenuButton<WebviewPopupWindowPolicy>(
             tooltip: 'Popup policy: ${_popupPolicyLabel(_popupWindowPolicy)}',
             icon: Icon(_popupPolicyIcon(_popupWindowPolicy)),

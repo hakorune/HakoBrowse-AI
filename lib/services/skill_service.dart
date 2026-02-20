@@ -8,15 +8,15 @@ import '../models/skill_definition.dart';
 class SkillService {
   static const String _enabledSkillsKey = 'enabled_skill_ids_v1';
   static const String _seededDefaultSkillKey = 'seeded_default_skill_v1';
-  static const String _defaultSkillId = 'weather-check';
-  static const String _defaultSkillName = 'Weather Check';
-  static const String _defaultSkillDescription = 'Googleで指定地域の天気を確認する';
-  static const List<String> _defaultAllowedTools = <String>[
+  static const String _weatherSkillId = 'weather-check';
+  static const String _weatherSkillName = 'Weather Check';
+  static const String _weatherSkillDescription = 'Googleで指定地域の天気を確認する';
+  static const List<String> _weatherAllowedTools = <String>[
     'navigate_to',
     'get_page_content',
     'extract_structured',
   ];
-  static const String _defaultSkillBody = '''
+  static const String _weatherSkillBody = '''
 Goal:
 - 指定した地域の天気を確認する。
 
@@ -28,20 +28,115 @@ Steps:
 2. `extract_structured` で現在気温・概要・最高/最低を抽出する。
 3. 抽出が難しい場合は `get_page_content` でページ内容を取得して要点を返す。
 ''';
+  static const String _moltbookSkillId = 'moltbook-post';
+  static const String _moltbookSkillName = 'Moltbook Post';
+  static const String _moltbookSkillDescription =
+      'Moltbook API で投稿/verify/掲示板取得を行う';
+  static const List<String> _moltbookAllowedTools = <String>['http_request'];
+  static const String _moltbookSkillBody = '''
+Goal:
+- Moltbook API を `http_request` で操作し、掲示板確認と投稿/verifyを行う。
+
+Prerequisite:
+- 設定 > Tool API Profiles で Moltbook APIキーを登録する。
+- 例: profile id `test-molt-key`
+
+Rules:
+- `https://www.moltbook.com/api/v1` だけを使う（wwwなしは禁止）。
+- APIキーは本文に書かない。`auth_profile` を毎回指定する。
+
+Examples:
+1. 掲示板一覧
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/submolts",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+2. 新着投稿
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts?sort=new&limit=10",
+  "method": "GET",
+  "auth_profile": "test-molt-key"
+}
+```
+
+3. 投稿
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/posts",
+  "method": "POST",
+  "auth_profile": "test-molt-key",
+  "body": {
+    "submolt_name": "general",
+    "title": "Hello",
+    "content": "Posted from HakoBrowseAI"
+  }
+}
+```
+
+4. Verify
+```json
+{
+  "url": "https://www.moltbook.com/api/v1/verify",
+  "method": "POST",
+  "auth_profile": "test-molt-key",
+  "body": {
+    "verification_code": "<verification_code>",
+    "answer": "<answer>"
+  }
+}
+```
+''';
 
   SkillDefinition buildDefaultSkillDefinition({
     bool enabled = true,
     String? path,
   }) {
     return SkillDefinition(
-      id: _defaultSkillId,
-      name: _defaultSkillName,
-      description: _defaultSkillDescription,
-      allowedTools: _defaultAllowedTools,
-      body: _defaultSkillBody.trim(),
-      path: path ?? 'private/skills/$_defaultSkillId/SKILL.md',
+      id: _weatherSkillId,
+      name: _weatherSkillName,
+      description: _weatherSkillDescription,
+      allowedTools: _weatherAllowedTools,
+      body: _weatherSkillBody.trim(),
+      path: path ?? 'private/skills/$_weatherSkillId/SKILL.md',
       enabled: enabled,
     );
+  }
+
+  SkillDefinition buildDefaultMoltbookSkillDefinition({
+    bool enabled = true,
+    String? path,
+  }) {
+    return SkillDefinition(
+      id: _moltbookSkillId,
+      name: _moltbookSkillName,
+      description: _moltbookSkillDescription,
+      allowedTools: _moltbookAllowedTools,
+      body: _moltbookSkillBody.trim(),
+      path: path ?? 'private/skills/$_moltbookSkillId/SKILL.md',
+      enabled: enabled,
+    );
+  }
+
+  List<SkillDefinition> buildBundledDefaultSkillDefinitions({
+    bool weatherEnabled = true,
+    bool moltbookEnabled = false,
+    String pathRoot = 'private/skills',
+  }) {
+    return <SkillDefinition>[
+      buildDefaultSkillDefinition(
+        enabled: weatherEnabled,
+        path: '$pathRoot/$_weatherSkillId/SKILL.md',
+      ),
+      buildDefaultMoltbookSkillDefinition(
+        enabled: moltbookEnabled,
+        path: '$pathRoot/$_moltbookSkillId/SKILL.md',
+      ),
+    ];
   }
 
   Future<List<SkillDefinition>> loadSkills({
@@ -93,16 +188,23 @@ Steps:
       return;
     }
 
-    final skillDir = Directory('${skillsRoot.path}/$_defaultSkillId');
-    await skillDir.create(recursive: true);
-    final content = _buildSkillMarkdown(
-      name: _defaultSkillName,
-      description: _defaultSkillDescription,
-      allowedTools: _defaultAllowedTools,
-      body: _defaultSkillBody.trim(),
+    final defaults = buildBundledDefaultSkillDefinitions(
+      weatherEnabled: true,
+      moltbookEnabled: false,
+      pathRoot: skillsRoot.path,
     );
-    await File('${skillDir.path}/SKILL.md').writeAsString(content);
-    enabledIds.add(_defaultSkillId);
+    for (final skill in defaults) {
+      final skillDir = Directory('${skillsRoot.path}/${skill.id}');
+      await skillDir.create(recursive: true);
+      final content = _buildSkillMarkdown(
+        name: skill.name,
+        description: skill.description,
+        allowedTools: skill.allowedTools,
+        body: skill.body,
+      );
+      await File('${skillDir.path}/SKILL.md').writeAsString(content);
+      enabledIds.add(skill.id);
+    }
     await saveEnabledSkillIds(enabledIds);
     await prefs.setBool(_seededDefaultSkillKey, true);
   }

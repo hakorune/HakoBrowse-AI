@@ -46,6 +46,8 @@ flutter run -d windows --dart-entrypoint-args=--default-state
 
 - AppBarに `[DEFAULT]` が表示されます
 - 設定/セッションの永続保存は行いません（runtime only）
+- デフォルトスキル（`Weather Check`はON、`Moltbook Post`はOFF）を表示します
+- API未設定でもブラウザ/UI操作は可能で、後からSettingsで登録できます
 
 ## GitHub公開チェック（推奨）
 - `private/` と `AGENTS.md` が未追跡であることを確認

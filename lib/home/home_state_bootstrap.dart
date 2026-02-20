@@ -78,12 +78,11 @@ extension _HomeStateBootstrapExt on _HomePageState {
 
   Future<void> _loadSkills() async {
     if (_defaultStateMode) {
-      final skills = <SkillDefinition>[
-        _skillService.buildDefaultSkillDefinition(
-          enabled: true,
-          path: '(default-state)',
-        ),
-      ];
+      final skills = _skillService.buildBundledDefaultSkillDefinitions(
+        weatherEnabled: true,
+        moltbookEnabled: false,
+        pathRoot: '(default-state)',
+      );
       if (!mounted) return;
       setState(() {
         _skills = skills;

@@ -148,26 +148,30 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   color: Colors.orange.shade100,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning_amber,
-                        color: Colors.orange.shade800, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Personal data on pages may be sent to your AI provider. Use at your own risk.',
-                        style: TextStyle(
-                            color: Colors.orange.shade900, fontSize: 12),
-                      ),
-                    ),
-                    if (!widget.persistToolAuthProfiles)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Preview mode: profile changes are runtime-only.',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                    Row(
+                      children: [
+                        Icon(Icons.warning_amber,
+                            color: Colors.orange.shade800, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Personal data on pages may be sent to your AI provider. Use at your own risk.',
+                            style: TextStyle(
+                                color: Colors.orange.shade900, fontSize: 12),
+                          ),
                         ),
+                      ],
+                    ),
+                    if (!widget.persistToolAuthProfiles) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Preview mode: profile changes are runtime-only.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -417,38 +421,33 @@ class _SettingsDialogState extends State<_SettingsDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: selectedAuthMethod == AuthMethod.apiKey &&
-                  apiKeyController.text.trim().isEmpty
-              ? null
-              : () async {
-                  final navigator = Navigator.of(context);
-                  if (widget.persistToolAuthProfiles) {
-                    await widget.toolAuthProfileService
-                        .saveProfiles(_authProfiles);
-                  }
-                  if (!mounted) return;
-                  final maxContentLength =
-                      int.tryParse(maxContentController.text.trim()) ?? 50000;
-                  final chatMaxMessages =
-                      int.tryParse(chatMaxMessagesController.text.trim()) ??
-                          300;
-                  final clampedChatMaxMessages =
-                      chatMaxMessages.clamp(50, 5000).toInt();
-                  navigator.pop(
-                    AppSettings(
-                      provider: selectedProvider,
-                      authMethod: selectedAuthMethod,
-                      experimentalSubscription: experimentalSubscription,
-                      apiKey: apiKeyController.text.trim(),
-                      oauthToken: oauthTokenController.text.trim(),
-                      baseUrl: baseUrlController.text.trim(),
-                      model: modelController.text.trim(),
-                      maxContentLength: maxContentLength,
-                      chatMaxMessages: clampedChatMaxMessages,
-                      leftPanelWidth: widget.initial.leftPanelWidth,
-                    ),
-                  );
-                },
+          onPressed: () async {
+            final navigator = Navigator.of(context);
+            if (widget.persistToolAuthProfiles) {
+              await widget.toolAuthProfileService.saveProfiles(_authProfiles);
+            }
+            if (!mounted) return;
+            final maxContentLength =
+                int.tryParse(maxContentController.text.trim()) ?? 50000;
+            final chatMaxMessages =
+                int.tryParse(chatMaxMessagesController.text.trim()) ?? 300;
+            final clampedChatMaxMessages =
+                chatMaxMessages.clamp(50, 5000).toInt();
+            navigator.pop(
+              AppSettings(
+                provider: selectedProvider,
+                authMethod: selectedAuthMethod,
+                experimentalSubscription: experimentalSubscription,
+                apiKey: apiKeyController.text.trim(),
+                oauthToken: oauthTokenController.text.trim(),
+                baseUrl: baseUrlController.text.trim(),
+                model: modelController.text.trim(),
+                maxContentLength: maxContentLength,
+                chatMaxMessages: clampedChatMaxMessages,
+                leftPanelWidth: widget.initial.leftPanelWidth,
+              ),
+            );
+          },
           child: const Text('Save'),
         ),
       ],
